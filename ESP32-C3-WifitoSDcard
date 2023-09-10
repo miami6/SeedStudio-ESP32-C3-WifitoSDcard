@@ -1,0 +1,210 @@
+// Miami6 Seed Studio ESP32-C3 2023 Wifi Scanning and Save results to SD card in CSV format . 
+  
+// when re scanning creates new file with ascending file number 
+
+
+
+#include <SPI.h>
+#include <SD.h>
+#include "WiFi.h"
+
+// Define the chip select pin for the SD card module
+const int chipSelect = 4; // Change this to the correct CS pin for your setup
+
+// File naming settings
+const char* baseFilename = "/scanwifi";
+const char* fileExtension = ".csv";
+int fileNumber = 1;
+
+// Function to list files in a directory (declaration only, implementation not provided)
+void listDir(const char *dirname, uint8_t levels);
+
+// Function to create a test file on the SD card
+void createTestFile() {
+    // Attempt to open the file for writing
+    File file = SD.open("/test.txt", FILE_WRITE);
+    
+    if (file) {
+        // Write a test message to the file
+        file.println("Test SD card.");
+        file.close();
+        Serial.println("File 'test.txt' created successfully.");
+    } else {
+        Serial.println("Error creating 'test.txt'");
+    }
+}
+
+// Setup function executed once at startup
+void setup() {
+    Serial.begin(115200); // Initialize serial communication for debugging
+    
+    // Initialize the SD card module
+    if (!SD.begin(chipSelect)) {
+        Serial.println("Card Mount Failed");
+        return;
+    }
+
+    Serial.println("Card mounted successfully");
+
+    // List files in the root directory of the SD card (implementation not provided)
+    listDir("/", 0);
+
+    // Create a test file on the SD card
+    createTestFile();
+
+    // Set up WiFi as a station (client) and disconnect from any previous connection
+    WiFi.mode(WIFI_STA);
+    WiFi.disconnect();
+    delay(100);
+
+    Serial.println("Setup done");
+}
+
+// Function to generate a new filename for scan results
+String generateNewFilename() {
+    String filename = baseFilename + String(fileNumber++) + fileExtension;
+    return filename;
+}
+
+// Function to save scan results to an SD card file
+void saveScanResultsToSDWithMAC(int scanCount) {
+    // Generate a new filename for the CSV file
+    String filename = generateNewFilename();
+    
+    // Open the file for writing
+    File scanFile = SD.open(filename, FILE_WRITE);
+
+    if (scanFile) {
+        // Write the CSV file header
+        scanFile.println("SSID,RSSI,Channel,Encryption,MAC");
+
+        // Loop through scan results and write each network's information
+        for (int i = 0; i < scanCount; ++i) {
+            scanFile.print(WiFi.SSID(i));
+            scanFile.print(",");
+            scanFile.print(WiFi.RSSI(i));
+            scanFile.print(",");
+            scanFile.print(WiFi.channel(i));
+            scanFile.print(",");
+            
+            // Determine and write the encryption type
+            switch (WiFi.encryptionType(i)) {
+                case WIFI_AUTH_OPEN:
+                    scanFile.print("Open");
+                    break;
+                case WIFI_AUTH_WEP:
+                    scanFile.print("WEP");
+                    break;
+                case WIFI_AUTH_WPA_PSK:
+                    scanFile.print("WPA");
+                    break;
+                case WIFI_AUTH_WPA2_PSK:
+                    scanFile.print("WPA2");
+                    break;
+                case WIFI_AUTH_WPA_WPA2_PSK:
+                    scanFile.print("WPA+WPA2");
+                    break;
+                case WIFI_AUTH_WPA2_ENTERPRISE:
+                    scanFile.print("WPA2-EAP");
+                    break;
+                case WIFI_AUTH_WPA3_PSK:
+                    scanFile.print("WPA3");
+                    break;
+                case WIFI_AUTH_WPA2_WPA3_PSK:
+                    scanFile.print("WPA2+WPA3");
+                    break;
+                case WIFI_AUTH_WAPI_PSK:
+                    scanFile.print("WAPI");
+                    break;
+                default:
+                    scanFile.print("Unknown");
+            }
+
+            scanFile.print(",");
+            scanFile.println(WiFi.BSSIDstr(i));
+        }
+
+        // Close the file after writing
+        scanFile.close();
+        Serial.println("Scan results saved to SD card: " + filename);
+    } else {
+        Serial.println("Error saving scan results to SD card");
+    }
+}
+
+// Main loop function
+void loop() {
+    Serial.println("Scan start");
+
+    // WiFi.scanNetworks will return the number of networks found
+    int n = WiFi.scanNetworks();
+    Serial.println("Scan done");
+    
+    if (n == 0) {
+        Serial.println("No networks found");
+    } else {
+        Serial.print(n);
+        Serial.println(" networks found");
+        Serial.println("Nr | SSID                             | RSSI | CH | Encryption | MAC Address");
+
+        // Loop through and print information for each network
+        for (int i = 0; i < n; ++i) {
+            Serial.printf("%2d", i + 1);
+            Serial.print(" | ");
+            Serial.printf("%-32.32s", WiFi.SSID(i).c_str());
+            Serial.print(" | ");
+            Serial.printf("%4d", WiFi.RSSI(i));
+            Serial.print(" | ");
+            Serial.printf("%2d", WiFi.channel(i));
+            Serial.print(" | ");
+
+            // Determine and print the encryption type
+            switch (WiFi.encryptionType(i)) {
+                case WIFI_AUTH_OPEN:
+                    Serial.print("Open");
+                    break;
+                case WIFI_AUTH_WEP:
+                    Serial.print("WEP");
+                    break;
+                case WIFI_AUTH_WPA_PSK:
+                    Serial.print("WPA");
+                    break;
+                case WIFI_AUTH_WPA2_PSK:
+                    Serial.print("WPA2");
+                    break;
+                case WIFI_AUTH_WPA_WPA2_PSK:
+                    Serial.print("WPA+WPA2");
+                    break;
+                case WIFI_AUTH_WPA2_ENTERPRISE:
+                    Serial.print("WPA2-EAP");
+                    break;
+                case WIFI_AUTH_WPA3_PSK:
+                    Serial.print("WPA3");
+                    break;
+                case WIFI_AUTH_WPA2_WPA3_PSK:
+                    Serial.print("WPA2+WPA3");
+                    break;
+                case WIFI_AUTH_WAPI_PSK:
+                    Serial.print("WAPI");
+                    break;
+                default:
+                    Serial.print("Unknown");
+            }
+
+            Serial.print(" | ");
+            Serial.println(WiFi.BSSIDstr(i));
+            delay(10);
+        }
+
+        // Save scan results to the SD card
+        saveScanResultsToSDWithMAC(n);
+    }
+
+    Serial.println("");
+
+    // Delete the scan result to free memory for code below
+    WiFi.scanDelete();
+
+    // Wait before scanning again
+    delay(5000);
+}
